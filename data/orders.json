@@ -1,0 +1,15 @@
+{
+  "1001": {
+    "product": "MacBook Air",
+    "status": "Shipped"
+  },
+  "1002": {
+    "product": "Keyboard",
+    "status": "Processing"
+  },
+  "1003": {
+    "product": "Mouse",
+    "status": "Delivered",
+    "delivered_at": "2026-11-01"
+  }
+}

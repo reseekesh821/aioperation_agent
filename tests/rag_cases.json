@@ -1,0 +1,17 @@
+[
+  {
+    "question": "How long do I have to request a refund?",
+    "expected_fact": "30 days after delivery",
+    "required_terms": ["30 days", "delivery"]
+  },
+  {
+    "question": "Can I request a refund for an order that is still shipping?",
+    "expected_fact": "Not eligible for standard refund review",
+    "required_terms": ["shipping", "standard"]
+  },
+  {
+    "question": "Does the company offer a lifetime warranty?",
+    "expected_fact": "Not specified in the policy",
+    "required_terms": ["do not specify"]
+  }
+]

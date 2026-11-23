@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.DS_Store
+
+# Generated ChromaDB index (rebuilt from policy text at runtime)
+data/chroma/
