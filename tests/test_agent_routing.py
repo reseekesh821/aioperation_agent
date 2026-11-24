@@ -83,11 +83,19 @@ def test_unknown_product_via_graph():
     assert "product" in answer.lower()
 
 
-def test_order_status_via_graph(monkeypatch):
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is the status of order 1003?",
+        "What is the order status of 1003?",
+        "What's happening with order 1003?",
+    ],
+)
+def test_order_status_via_graph(question, monkeypatch):
     monkeypatch.setattr(agent_graph_module, "llm", _NaturalFromFactsLLM())
 
     result = agent_graph.invoke({
-        "messages": [("user", "What is the status of order 1003?")]
+        "messages": [("user", question)]
     })
 
     tools_used = [m.name for m in result["messages"] if m.type == "tool"]
@@ -97,6 +105,35 @@ def test_order_status_via_graph(monkeypatch):
     assert "Delivered" in answer
     assert "1003" in answer
     assert get_last_generation().used_fallback is False
+
+
+def test_check_order_phrasing_via_graph(monkeypatch):
+    monkeypatch.setattr(agent_graph_module, "llm", _NaturalFromFactsLLM())
+
+    result = agent_graph.invoke({
+        "messages": [("user", "Check order 1001.")]
+    })
+
+    tools_used = [m.name for m in result["messages"] if m.type == "tool"]
+    answer = result["messages"][-1].content
+
+    assert tools_used == ["order_lookup"]
+    assert "1001" in answer
+    assert "Shipped" in answer
+
+
+def test_nonexistent_order_via_graph(monkeypatch):
+    monkeypatch.setattr(agent_graph_module, "llm", _NaturalFromFactsLLM())
+
+    result = agent_graph.invoke({
+        "messages": [("user", "What is the order status of 9999?")]
+    })
+
+    tools_used = [m.name for m in result["messages"] if m.type == "tool"]
+    answer = result["messages"][-1].content
+
+    assert tools_used == ["order_lookup"]
+    assert "not found" in answer.lower()
 
 
 def test_refund_eligibility_via_graph(monkeypatch):
@@ -112,6 +149,17 @@ def test_refund_eligibility_via_graph(monkeypatch):
     assert tools_used == ["refund_lookup"]
     assert "unavailable" in answer.lower() or "not" in answer.lower()
     assert get_last_generation().used_fallback is False
+
+
+def test_refund_for_order_phrasing_stays_on_refund_tool(monkeypatch):
+    monkeypatch.setattr(agent_graph_module, "llm", _NaturalFromFactsLLM())
+
+    result = agent_graph.invoke({
+        "messages": [("user", "Can I get a refund for order 1001?")]
+    })
+
+    tools_used = [m.name for m in result["messages"] if m.type == "tool"]
+    assert tools_used == ["refund_lookup"]
 
 
 def test_unclear_request_asks_for_clarification():

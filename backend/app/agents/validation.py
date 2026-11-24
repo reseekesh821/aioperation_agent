@@ -5,8 +5,11 @@ from backend.app.services.inventory import (
     normalize_product_name,
 )
 
+# Matches common order-ID phrasings without treating bare numbers as IDs:
+#   "order 1003", "order id #1003", "status of order 1003",
+#   "order status of 1003", "order status for 1001"
 ORDER_ID_PATTERN = re.compile(
-    r"\border\s*(?:id|number|#)?\s*[:#]?\s*(\d+)\b",
+    r"\border(?:\s+(?:id|number|#|status)){0,2}\s*(?:(?:of|for)\s+|[:#]\s*)?(\d+)\b",
     re.IGNORECASE,
 )
 
@@ -32,6 +35,13 @@ POLICY_CUES = (
 )
 
 
+def extract_order_id(question: str) -> int | None:
+    match = ORDER_ID_PATTERN.search(question)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
 def valid_order_reference(question: str, order_id: int) -> bool:
     if not isinstance(order_id, int) or isinstance(order_id, bool):
         return False
@@ -39,15 +49,14 @@ def valid_order_reference(question: str, order_id: int) -> bool:
     if order_id <= 0:
         return False
 
-    pattern = rf"\border\s*(?:id|number|#)?\s*[:#]?\s*{order_id}\b"
-    return bool(re.search(pattern, question, re.IGNORECASE))
+    return extract_order_id(question) == order_id
 
 
 def expected_tool(question: str) -> str | None:
     q = question.casefold()
-    order_match = ORDER_ID_PATTERN.search(question)
+    order_id = extract_order_id(question)
 
-    if order_match:
+    if order_id is not None:
         if "policy" in q or "warranty" in q:
             return "policy_lookup"
         if "refund" in q:

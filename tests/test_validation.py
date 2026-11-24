@@ -13,12 +13,17 @@ from backend.app.agents.validation import (
         ("How many monitors are available?", "inventory_lookup"),
         ("Do you have any mice?", "inventory_lookup"),
         ("What is the status of order 1003?", "order_lookup"),
+        ("What is the order status of 1003?", "order_lookup"),
+        ("Check order 1001.", "order_lookup"),
+        ("What's happening with order 1003?", "order_lookup"),
         ("Is order 1003 eligible for a refund?", "refund_lookup"),
+        ("Can I get a refund for order 1001?", "refund_lookup"),
         ("Can I request a refund while shipping?", "policy_lookup"),
         ("What is the refund deadline?", "policy_lookup"),
         ("Does the company offer a lifetime warranty?", "policy_lookup"),
         ("Can I get store credit?", "policy_lookup"),
         ("Hello there", None),
+        ("What about 1003?", None),
     ],
 )
 def test_expected_tool(question, expected):
@@ -27,6 +32,7 @@ def test_expected_tool(question, expected):
 
 def test_valid_order_reference_accepts_mentioned_id():
     assert valid_order_reference("status of order 1003", 1003) is True
+    assert valid_order_reference("order status of 1003", 1003) is True
     assert valid_order_reference("status of order 1003", 9999) is False
     assert valid_order_reference("just the number 1003", 1003) is False
 

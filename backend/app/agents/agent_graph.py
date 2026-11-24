@@ -1,5 +1,4 @@
 import logging
-import re
 from uuid import uuid4
 
 from langchain_ollama import ChatOllama
@@ -8,7 +7,11 @@ from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_core.messages import ToolMessage, AIMessage
 
 from backend.app.agents.ai_errors import is_ai_service_error
-from backend.app.agents.validation import expected_tool, validate_tool_call
+from backend.app.agents.validation import (
+    expected_tool,
+    extract_order_id,
+    validate_tool_call,
+)
 from backend.app.services.inventory import find_product_in_text
 from backend.app.services.policy_evidence import select_policy_evidence
 from backend.app.agents.policy_generation import (
@@ -34,11 +37,6 @@ tools = [inventory_lookup, order_lookup, refund_lookup, policy_lookup]
 llm = ChatOllama(model="llama3.1:8b", temperature=0)
 # Do not convert tool/runtime failures into ToolMessage success payloads.
 tool_node = ToolNode(tools, handle_tool_errors=False)
-
-ORDER_ID_PATTERN = re.compile(
-    r"\border\s*(?:id|number|#)?\s*[:#]?\s*(\d+)\b",
-    re.IGNORECASE,
-)
 
 CLARIFY_MESSAGE = (
     "I can help with inventory, order status, refund eligibility, "
@@ -87,12 +85,12 @@ def _build_tool_response(question: str, expected: str):
         )
 
     if expected in ("order_lookup", "refund_lookup"):
-        match = ORDER_ID_PATTERN.search(question)
-        if match is None:
+        order_id = extract_order_id(question)
+        if order_id is None:
             return AIMessage(content=INVALID_TOOL_MESSAGE)
         return _forced_tool_call(
             expected,
-            {"order_id": int(match.group(1))},
+            {"order_id": order_id},
         )
 
     return AIMessage(content=CLARIFY_MESSAGE)
