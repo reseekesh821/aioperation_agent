@@ -138,3 +138,120 @@ button:disabled {
     color: #1f2937;
     line-height: 1.45;
 }
+
+.support-email-actions {
+    margin-top: 12px;
+}
+
+.investigate-button {
+    padding: 8px 14px;
+    font-size: 0.95rem;
+}
+
+.support-investigation {
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.support-investigation.is-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.support-finding-heading {
+    margin: 0 0 10px;
+    font-weight: 700;
+}
+
+.support-finding-loading,
+.support-finding-error {
+    margin: 0;
+}
+
+.support-finding-error {
+    color: #b91c1c;
+}
+
+.support-finding-block {
+    margin-bottom: 10px;
+}
+
+.support-finding-label {
+    margin: 0 0 4px;
+    color: #4b5563;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.support-finding-text {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: Arial, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: #1f2937;
+}
+
+.support-draft-panel {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.generate-draft-button,
+.copy-draft-button,
+.save-gmail-draft-button {
+    padding: 8px 14px;
+    font-size: 0.95rem;
+}
+
+.save-gmail-draft-button {
+    background: #0f766e;
+}
+
+.support-draft-status {
+    margin: 10px 0 0;
+    color: #4b5563;
+}
+
+.support-draft-status.is-error {
+    color: #b91c1c;
+}
+
+.support-draft-editor {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    resize: vertical;
+    font-family: Arial, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: #1f2937;
+    background: white;
+}
+
+.support-draft-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.support-draft-not-sent {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.85rem;
+    font-weight: 700;
+}

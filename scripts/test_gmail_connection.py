@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CREDENTIALS_FILE = ROOT / "credentials.json"
 TOKEN_FILE = ROOT / "token.json"
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",]
 LABEL_NAME = "AI-Operations-Test"
 
 
