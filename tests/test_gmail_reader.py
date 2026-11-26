@@ -7,7 +7,9 @@ from backend.app.integrations import gmail_reader as gmail_reader_module
 from backend.app.integrations.gmail_reader import (
     GmailAuthError,
     GmailLabelNotFoundError,
+    GmailMessageNotAllowedError,
     extract_plain_text_body,
+    fetch_support_email_by_id,
     fetch_support_emails,
     html_to_plain_text,
     load_gmail_credentials,
@@ -196,12 +198,12 @@ def test_fetch_support_emails_returns_structured_messages():
     )
 
     emails = fetch_support_emails(service=service)
-    assert emails == [{
-        "id": "msg-1",
-        "sender": "customer@example.com",
-        "subject": "Where is my order?",
-        "body": "Please check order 1003.",
-    }]
+    assert emails[0]["id"] == "msg-1"
+    assert emails[0]["sender"] == "customer@example.com"
+    assert emails[0]["subject"] == "Where is my order?"
+    assert emails[0]["body"] == "Please check order 1003."
+    assert emails[0]["thread_id"] == ""
+    assert "rfc822_message_id" in emails[0]
 
 
 def test_fetch_support_emails_label_missing():
@@ -217,3 +219,57 @@ def test_fetch_support_emails_label_missing():
 
     with pytest.raises(GmailLabelNotFoundError, match="AI-Operations-Test"):
         fetch_support_emails(service=MissingLabelService())
+
+
+def test_fetch_support_email_by_id_requires_permitted_label():
+    details = {
+        "msg-ok": {
+            "id": "msg-ok",
+            "labelIds": ["Label_123"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "a@example.com"},
+                    {"name": "Subject", "value": "Help"},
+                ],
+                "mimeType": "text/plain",
+                "body": {"data": _b64("Body text")},
+            },
+        },
+        "msg-bad": {
+            "id": "msg-bad",
+            "labelIds": ["INBOX"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "a@example.com"},
+                    {"name": "Subject", "value": "Help"},
+                ],
+                "mimeType": "text/plain",
+                "body": {"data": _b64("Body text")},
+            },
+        },
+    }
+
+    class ByIdService:
+        def __init__(self):
+            self._labels = _FakeLabels()
+            self._details = details
+
+        def users(self):
+            return self
+
+        def labels(self):
+            return self._labels
+
+        def messages(self):
+            return self
+
+        def get(self, userId, id, format):  # noqa: A002, N803, ANN001
+            return _FakeExecute(self._details[id])
+
+    service = ByIdService()
+    parsed = fetch_support_email_by_id("msg-ok", service=service)
+    assert parsed["id"] == "msg-ok"
+    assert parsed["body"] == "Body text"
+
+    with pytest.raises(GmailMessageNotAllowedError, match="permitted"):
+        fetch_support_email_by_id("msg-bad", service=service)

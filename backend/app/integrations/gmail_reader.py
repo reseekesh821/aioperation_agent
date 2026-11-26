@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
 TOKEN_FILE = ROOT / "token.json"
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
+]
 LABEL_NAME = "AI-Operations-Test"
 MAX_MESSAGES = 5
 
@@ -36,6 +39,10 @@ class GmailLabelNotFoundError(Exception):
 
 class GmailApiError(Exception):
     """Unexpected Gmail API failure."""
+
+
+class GmailMessageNotAllowedError(Exception):
+    """Requested message is missing or outside the permitted support label."""
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -228,13 +235,82 @@ def _parse_message(details: dict[str, Any]) -> dict[str, str]:
     sender = _header_value(headers, "From") or "(Unknown sender)"
     subject = _header_value(headers, "Subject") or "(No subject)"
     body = extract_plain_text_body(details.get("payload"))
+    reply_to = _header_value(headers, "Reply-To")
+    rfc822_message_id = (
+        _header_value(headers, "Message-ID")
+        or _header_value(headers, "Message-Id")
+    )
+    references = _header_value(headers, "References")
 
     return {
         "id": message_id,
+        "thread_id": details.get("threadId") or "",
         "sender": sender,
+        "reply_to": reply_to,
         "subject": subject,
         "body": body,
+        "rfc822_message_id": rfc822_message_id,
+        "references": references,
     }
+
+
+def _validate_message_id(message_id: str) -> str:
+    cleaned = (message_id or "").strip()
+    if not cleaned or not re.fullmatch(r"[A-Za-z0-9_-]+", cleaned):
+        raise GmailApiError("Invalid Gmail message ID.")
+    return cleaned
+
+
+def _get_message_details(service, message_id: str) -> dict[str, Any]:
+    try:
+        return (
+            service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="full")
+            .execute()
+        )
+    except HttpError as exc:
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status == 404:
+            raise GmailMessageNotAllowedError(
+                "Gmail message was not found or is not available."
+            ) from exc
+        raise GmailApiError("Failed to fetch a labeled Gmail message.") from exc
+
+
+def fetch_support_email_by_id(
+    message_id: str,
+    *,
+    label_name: str = LABEL_NAME,
+    token_path: Path = TOKEN_FILE,
+    service=None,
+) -> dict[str, str]:
+    """
+    Fetch one support email by Gmail ID after verifying the permitted label.
+
+    Never trusts browser-supplied email text; always reloads from Gmail.
+    """
+    message_id = _validate_message_id(message_id)
+    gmail = service
+    if gmail is None:
+        creds = load_gmail_credentials(token_path=token_path)
+        gmail = _build_gmail_service(creds)
+
+    label_id = _find_label_id(gmail, label_name=label_name)
+    details = _get_message_details(gmail, message_id)
+    label_ids = details.get("labelIds") or []
+    if label_id not in label_ids:
+        raise GmailMessageNotAllowedError(
+            f"Gmail message is not in the permitted '{label_name}' label."
+        )
+
+    parsed = _parse_message(details)
+    logger.info(
+        "gmail_support_message_fetched label=%s message_id_present=%s",
+        label_name,
+        bool(parsed.get("id")),
+    )
+    return parsed
 
 
 def fetch_support_emails(
@@ -274,16 +350,7 @@ def fetch_support_emails(
         message_id = ref.get("id")
         if not message_id:
             continue
-        try:
-            details = (
-                gmail.users()
-                .messages()
-                .get(userId="me", id=message_id, format="full")
-                .execute()
-            )
-        except HttpError as exc:
-            raise GmailApiError("Failed to fetch a labeled Gmail message.") from exc
-
+        details = _get_message_details(gmail, message_id)
         emails.append(_parse_message(details))
 
     logger.info(
