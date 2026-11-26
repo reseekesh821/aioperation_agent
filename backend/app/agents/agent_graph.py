@@ -10,6 +10,8 @@ from backend.app.agents.ai_errors import is_ai_service_error
 from backend.app.agents.validation import (
     expected_tool,
     extract_order_id,
+    extract_olist_order_id,
+    extract_olist_customer_id,
     validate_tool_call,
 )
 from backend.app.services.inventory import find_product_in_text
@@ -18,12 +20,17 @@ from backend.app.agents.policy_generation import (
     generate_policy_plan,
     render_policy_answer,
 )
-from backend.app.agents.response_generation import generate_grounded_response
+from backend.app.agents.response_generation import (
+    generate_grounded_response,
+    generate_olist_response,
+)
 from backend.app.agents.tools import (
     inventory_lookup,
     order_lookup,
     refund_lookup,
     policy_lookup,
+    olist_order_lookup,
+    olist_customer_lookup,
 )
 from backend.app.services.vector_store import ensure_policies_indexed
 
@@ -32,7 +39,14 @@ logger = logging.getLogger(__name__)
 # Ensure the Chroma collection has policy embeddings before serving traffic.
 ensure_policies_indexed()
 
-tools = [inventory_lookup, order_lookup, refund_lookup, policy_lookup]
+tools = [
+    inventory_lookup,
+    order_lookup,
+    refund_lookup,
+    policy_lookup,
+    olist_order_lookup,
+    olist_customer_lookup,
+]
 
 llm = ChatOllama(model="llama3.1:8b", temperature=0)
 # Do not convert tool/runtime failures into ToolMessage success payloads.
@@ -40,7 +54,9 @@ tool_node = ToolNode(tools, handle_tool_errors=False)
 
 CLARIFY_MESSAGE = (
     "I can help with inventory, order status, refund eligibility, "
-    "or refund policy questions. Please include a product name or order ID."
+    "refund policy questions, or historical Olist order/customer lookups. "
+    "Please include a product name, numeric order ID, or 32-character Olist "
+    "order or customer ID."
 )
 INVALID_TOOL_MESSAGE = "I couldn't validate the tool call."
 POLICY_FALLBACK = "The available policies do not specify this information."
@@ -93,6 +109,24 @@ def _build_tool_response(question: str, expected: str):
             {"order_id": order_id},
         )
 
+    if expected == "olist_order_lookup":
+        olist_order_id = extract_olist_order_id(question)
+        if olist_order_id is None:
+            return AIMessage(content=INVALID_TOOL_MESSAGE)
+        return _forced_tool_call(
+            "olist_order_lookup",
+            {"order_id": olist_order_id},
+        )
+
+    if expected == "olist_customer_lookup":
+        olist_customer_id = extract_olist_customer_id(question)
+        if olist_customer_id is None:
+            return AIMessage(content=INVALID_TOOL_MESSAGE)
+        return _forced_tool_call(
+            "olist_customer_lookup",
+            {"customer_id": olist_customer_id},
+        )
+
     return AIMessage(content=CLARIFY_MESSAGE)
 
 
@@ -112,9 +146,15 @@ def _final_answer_from_tool(question: str, tool_message: ToolMessage) -> str:
                 raise
             logger.exception("policy planning failed; using safe fallback")
             return POLICY_FALLBACK
-    else:
-        verified_facts = tool_message.content
 
+        result = generate_grounded_response(question, verified_facts, llm)
+        return result.answer
+
+    if tool_message.name in ("olist_order_lookup", "olist_customer_lookup"):
+        result = generate_olist_response(question, tool_message.content, llm)
+        return result.answer
+
+    verified_facts = tool_message.content
     result = generate_grounded_response(question, verified_facts, llm)
     return result.answer
 
