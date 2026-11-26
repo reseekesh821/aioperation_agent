@@ -3,12 +3,18 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.services.orders import get_order
 from backend.app.services.inventory import get_inventory, normalize_product_name
 from backend.app.agents.agent_graph import agent_graph
 from backend.app.agents.ai_errors import is_ai_service_error
-from fastapi.middleware.cors import CORSMiddleware
+from backend.app.integrations.gmail_reader import (
+    GmailApiError,
+    GmailAuthError,
+    GmailLabelNotFoundError,
+    fetch_support_emails,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,7 +29,7 @@ app = FastAPI(title="AI Operations Agent")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5500", "http://127.0.0.1:5500"],
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
@@ -92,6 +98,31 @@ def chat_endpoint(request: ChatRequest):
             detail="AI service is temporarily unavailable.",
         ) from exc
 
+
+@app.get("/support/emails")
+def list_support_emails():
+    """Read-only localhost inbox view for labeled Gmail support messages."""
+    request_id = uuid4().hex[:8]
+    logger.info("support_emails_started request_id=%s", request_id)
+
+    try:
+        emails = fetch_support_emails()
+    except GmailAuthError as exc:
+        logger.warning("support_emails_auth_failed request_id=%s", request_id)
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GmailLabelNotFoundError as exc:
+        logger.warning("support_emails_label_missing request_id=%s", request_id)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GmailApiError as exc:
+        logger.warning("support_emails_gmail_failed request_id=%s", request_id)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    logger.info(
+        "support_emails_completed request_id=%s count=%s",
+        request_id,
+        len(emails),
+    )
+    return {"emails": emails}
 
 
 # python -m uvicorn backend.app.main:app --reload
