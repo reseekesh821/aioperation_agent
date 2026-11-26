@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage
 import backend.app.agents.agent_graph as agent_graph_module
 from backend.app.agents.agent_graph import agent_graph
 from backend.app.agents.response_generation import (
+    classify_olist_intent,
     detect_olist_requested_fields,
     generate_olist_response,
     get_last_generation,
@@ -32,11 +33,27 @@ SAMPLE_CUSTOMER_ORDER_ID = "00e7ee1b050b8499577073aeb2a297a1"
 ORDER_WITH_REVIEW = "73fc7af87114b39712e6da79b0a377eb"
 ORDER_WITHOUT_REVIEW = "00143d0f86d6fbd9f9b38ab440ac16f5"
 PAYMENT_ORDER_ID = "00010242fe8c5a6d1ba2dd792cb16214"
+MULTI_ITEM_ORDER_ID = "0008288aa423d2a3f00fcb17cd7d8719"
+CANCELED_ORDER_ID = "1b9ecfe83cdc259250e1a8aca174f0ad"
 MISSING_OLIST_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 PAYMENT_QUESTION = (
     f"Investigate historical order {PAYMENT_ORDER_ID}. What was the item price, "
     "shipping cost, total amount paid, payment method, and number of installments?"
+)
+MULTI_ITEM_QUESTION = (
+    f"For historical order {MULTI_ITEM_ORDER_ID}, what were the item prices, "
+    "shipping costs, and total amount paid?"
+)
+REVIEW_QUESTION = (
+    f"What was the customer review score for historical order {PAYMENT_ORDER_ID}?"
+)
+CANCELED_REFUND_CONFIRM_QUESTION = (
+    f"Investigate canceled historical order {CANCELED_ORDER_ID}. "
+    "Was a refund actually issued?"
+)
+REFUND_ELIGIBILITY_QUESTION = (
+    f"Is order {SAMPLE_OLIST_ID} eligible for a refund?"
 )
 
 
@@ -637,3 +654,233 @@ def test_olist_generation_covers_status_and_review():
     assert result.used_fallback is False
     assert "4" in result.answer
     assert "categor" in result.answer.lower()
+
+
+def test_classify_olist_intent_separates_refund_meanings():
+    assert classify_olist_intent(REFUND_ELIGIBILITY_QUESTION) == "refund_eligibility"
+    assert classify_olist_intent(CANCELED_REFUND_CONFIRM_QUESTION) == (
+        "refund_confirmation"
+    )
+    assert classify_olist_intent(PAYMENT_QUESTION) == "order_facts"
+    assert classify_olist_intent(REVIEW_QUESTION) == "order_facts"
+
+
+def test_refund_confirmation_fallback_does_not_use_eligibility_language():
+    facts = olist_order_lookup.invoke({"order_id": CANCELED_ORDER_ID})
+    answer = render_olist_safe_fallback(CANCELED_REFUND_CONFIRM_QUESTION, facts)
+
+    assert CANCELED_ORDER_ID in answer
+    assert "canceled" in answer.lower()
+    assert "does not confirm that a refund was issued" in answer.lower()
+    assert "cannot be determined" not in answer.lower()
+    assert "never delivered" not in answer.lower()
+    assert "was not delivered" not in answer.lower()
+    assert "eligible" not in answer.lower()
+
+
+def test_refund_confirmation_rejects_issued_claim_and_false_non_delivery():
+    facts = olist_order_lookup.invoke({"order_id": CANCELED_ORDER_ID})
+    issued = (
+        f"Historical Olist order {CANCELED_ORDER_ID} was canceled and a refund "
+        "was issued."
+    )
+    eligibility_only = (
+        f"Historical Olist order {CANCELED_ORDER_ID} has status canceled. "
+        "Current refund eligibility cannot be determined from this historical record."
+    )
+    false_non_delivery = (
+        f"Historical Olist order {CANCELED_ORDER_ID} was never delivered, so the "
+        "historical record does not confirm that a refund was issued."
+    )
+    good = (
+        f"Historical Olist order {CANCELED_ORDER_ID} has status canceled. "
+        "The historical record does not confirm that a refund was issued."
+    )
+
+    assert not is_olist_answer_grounded(
+        issued, facts, CANCELED_REFUND_CONFIRM_QUESTION
+    )
+    assert not is_olist_answer_grounded(
+        eligibility_only, facts, CANCELED_REFUND_CONFIRM_QUESTION
+    )
+    assert not is_olist_answer_grounded(
+        false_non_delivery, facts, CANCELED_REFUND_CONFIRM_QUESTION
+    )
+    assert is_olist_answer_grounded(good, facts, CANCELED_REFUND_CONFIRM_QUESTION)
+
+
+def test_refund_confirmation_successful_model_answer():
+    facts = olist_order_lookup.invoke({"order_id": CANCELED_ORDER_ID})
+
+    class GoodConfirmLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {CANCELED_ORDER_ID} has status canceled. "
+                    "The historical record does not confirm that a refund was issued."
+                )
+            )
+
+    result = generate_olist_response(
+        CANCELED_REFUND_CONFIRM_QUESTION,
+        facts,
+        GoodConfirmLLM(),
+    )
+    assert result.used_fallback is False
+    assert "does not confirm that a refund was issued" in result.answer.lower()
+    assert "cannot be determined" not in result.answer.lower()
+
+
+def test_refund_confirmation_falls_back_when_model_claims_issued():
+    facts = olist_order_lookup.invoke({"order_id": CANCELED_ORDER_ID})
+
+    class BadConfirmLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {CANCELED_ORDER_ID} was canceled and "
+                    "the refund was issued to the customer."
+                )
+            )
+
+    result = generate_olist_response(
+        CANCELED_REFUND_CONFIRM_QUESTION,
+        facts,
+        BadConfirmLLM(),
+    )
+    assert result.used_fallback is True
+    assert "does not confirm that a refund was issued" in result.answer.lower()
+    assert "issued to the customer" not in result.answer.lower()
+    assert "cannot be determined" not in result.answer.lower()
+
+
+def test_refund_eligibility_still_uses_cannot_determine_path():
+    facts = olist_order_lookup.invoke({"order_id": SAMPLE_OLIST_ID})
+    fallback = render_olist_safe_fallback(REFUND_ELIGIBILITY_QUESTION, facts)
+    assert "cannot be determined" in fallback.lower()
+    assert "does not confirm that a refund was issued" not in fallback.lower()
+
+    class GoodEligibilityLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {SAMPLE_OLIST_ID} has status delivered. "
+                    "Current refund eligibility cannot be determined from this "
+                    "historical record."
+                )
+            )
+
+    result = generate_olist_response(
+        REFUND_ELIGIBILITY_QUESTION,
+        facts,
+        GoodEligibilityLLM(),
+    )
+    assert result.used_fallback is False
+    assert "cannot be determined" in result.answer.lower()
+
+
+def test_review_question_preserves_verified_score_model_and_fallback():
+    facts = olist_order_lookup.invoke({"order_id": PAYMENT_ORDER_ID})
+    assert "Customer review score(s): 5." in facts
+
+    class GoodReviewLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {PAYMENT_ORDER_ID} has a verified "
+                    "customer review score of 5."
+                )
+            )
+
+    ok = generate_olist_response(REVIEW_QUESTION, facts, GoodReviewLLM())
+    assert ok.used_fallback is False
+    assert "5" in ok.answer
+
+    class BadReviewLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {PAYMENT_ORDER_ID} has status delivered."
+                )
+            )
+
+    fallback = generate_olist_response(REVIEW_QUESTION, facts, BadReviewLLM())
+    assert fallback.used_fallback is True
+    assert "5" in fallback.answer
+    assert "review score" in fallback.answer.lower()
+
+
+def test_customer_lookup_preserves_associated_orders_model_and_fallback(monkeypatch):
+    question = f"Look up customer ID {SAMPLE_CUSTOMER_ID}"
+
+    class GoodCustomerLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist customer {SAMPLE_CUSTOMER_ID} has matching "
+                    f"order {SAMPLE_CUSTOMER_ORDER_ID} with status delivered."
+                )
+            )
+
+        def with_structured_output(self, schema, method="json_schema"):
+            raise AssertionError("structured output not expected in these tests")
+
+    monkeypatch.setattr(agent_graph_module, "llm", GoodCustomerLLM())
+    result = agent_graph.invoke({"messages": [("user", question)]})
+    answer = result["messages"][-1].content
+    assert SAMPLE_CUSTOMER_ID in answer
+    assert SAMPLE_CUSTOMER_ORDER_ID in answer
+
+    facts = olist_customer_lookup.invoke({"customer_id": SAMPLE_CUSTOMER_ID})
+    fallback = render_olist_safe_fallback(question, facts)
+    assert SAMPLE_CUSTOMER_ID in fallback
+    assert SAMPLE_CUSTOMER_ORDER_ID in fallback
+
+
+def test_multi_item_totals_model_and_fallback():
+    facts = olist_order_lookup.invoke({"order_id": MULTI_ITEM_ORDER_ID})
+    assert "price=49.90" in facts
+    assert "freight=13.37" in facts
+    assert "value=126.54" in facts
+
+    class GoodMultiLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {MULTI_ITEM_ORDER_ID} had item prices "
+                    "49.90 and 49.90 with shipping/freight 13.37 and 13.37, for a "
+                    "total amount paid of 126.54."
+                )
+            )
+
+    ok = generate_olist_response(MULTI_ITEM_QUESTION, facts, GoodMultiLLM())
+    assert ok.used_fallback is False
+    assert "49.90" in ok.answer
+    assert "13.37" in ok.answer
+    assert "126.54" in ok.answer
+
+    class BadMultiLLM:
+        def invoke(self, messages):
+            return AIMessage(
+                content=(
+                    f"Historical Olist order {MULTI_ITEM_ORDER_ID} has status delivered."
+                )
+            )
+
+    fallback = generate_olist_response(MULTI_ITEM_QUESTION, facts, BadMultiLLM())
+    assert fallback.used_fallback is True
+    assert "49.90" in fallback.answer
+    assert "13.37" in fallback.answer
+    assert "99.80" in fallback.answer
+    assert "26.74" in fallback.answer
+    assert "126.54" in fallback.answer
+
+
+def test_payment_regression_still_holds_58_90_path():
+    facts = olist_order_lookup.invoke({"order_id": PAYMENT_ORDER_ID})
+    fallback = render_olist_safe_fallback(PAYMENT_QUESTION, facts)
+    assert "58.90" in fallback
+    assert "13.29" in fallback
+    assert "72.19" in fallback
+    assert "credit_card" in fallback
+    assert re.search(r"\b2\b", fallback)
