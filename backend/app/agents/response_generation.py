@@ -79,32 +79,69 @@ Do not invent missing fields.
 Do not mention rewriting, drafts, source labels, grounding instructions, or tools.
 """
 
-OLIST_REFUND_RESPONSE_SYSTEM_PROMPT = """
-You are answering a refund question about a historical Olist order.
+OLIST_REFUND_ELIGIBILITY_SYSTEM_PROMPT = """
+You are answering a refund-eligibility question about a historical Olist order.
 
 In one or two short sentences:
 1. Say this is a historical Olist order and include the order ID.
-2. Mention the historical status and delivery date when present in the facts.
+2. Mention the historical status and recorded delivery date only when present.
 3. Explicitly state that current refund eligibility cannot be determined from this
    historical record.
 Do not say the order is eligible or ineligible for a refund.
+Do not claim that a refund was or was not issued.
+Do not treat a missing delivery date as proof that the order was never delivered.
 Do not mention reviews unless the user asked about them.
 Do not mention source labels, grounding instructions, review-text warnings, tools,
 or JSON.
 Use only the verified facts.
 """
 
-OLIST_REFUND_RETRY_SYSTEM_PROMPT = """
+OLIST_REFUND_ELIGIBILITY_RETRY_PROMPT = """
 Your previous draft was rejected.
 
 Rewrite in one or two short sentences using only the verified facts.
-Include the Olist order ID and historical status/delivery date when present.
+Include the Olist order ID and historical status when present.
 Explicitly say current refund eligibility cannot be determined from this historical
 record.
-Do not claim eligibility or ineligibility.
+Do not claim eligibility, ineligibility, or that a refund was issued.
+Do not treat a missing delivery date as proof of non-delivery.
 Do not mention source labels, grounding instructions, review-text warnings, tools,
 rewriting, or drafts.
 """
+
+OLIST_REFUND_CONFIRMATION_SYSTEM_PROMPT = """
+You are answering whether a historical Olist record confirms that a refund was issued.
+
+In one or two short sentences:
+1. Say this is a historical Olist order and include the order ID.
+2. Mention the historical status when present.
+3. Explicitly state that the historical record does not confirm that a refund was
+   issued / contains no verified refund-issuance evidence.
+Do not claim a refund was issued.
+Do not answer as a current refund-eligibility question.
+Do not say eligibility cannot be determined unless the user also asked about
+eligibility.
+Do not treat a missing delivery date as proof that the order was never delivered.
+Do not mention source labels, grounding instructions, review-text warnings, tools,
+or JSON.
+Use only the verified facts.
+"""
+
+OLIST_REFUND_CONFIRMATION_RETRY_PROMPT = """
+Your previous draft was rejected.
+
+Rewrite in one or two short sentences using only the verified facts.
+Include the Olist order ID and historical status when present.
+Explicitly say the historical record does not confirm that a refund was issued.
+Do not claim a refund was issued and do not switch to eligibility language.
+Do not treat a missing delivery date as proof of non-delivery.
+Do not mention source labels, grounding instructions, review-text warnings, tools,
+rewriting, or drafts.
+"""
+
+# Backward-compatible aliases used by older call sites/tests.
+OLIST_REFUND_RESPONSE_SYSTEM_PROMPT = OLIST_REFUND_ELIGIBILITY_SYSTEM_PROMPT
+OLIST_REFUND_RETRY_SYSTEM_PROMPT = OLIST_REFUND_ELIGIBILITY_RETRY_PROMPT
 
 OLIST_FORBIDDEN_INFERENCES = (
     "eligible for refund",
@@ -119,6 +156,19 @@ OLIST_FORBIDDEN_INFERENCES = (
     "lifetime warranty",
 )
 
+OLIST_REFUND_ISSUED_CLAIMS = (
+    "refund was issued",
+    "refund has been issued",
+    "refund issued",
+    "was refunded",
+    "were refunded",
+    "refund was processed",
+    "refund has been processed",
+    "received a refund",
+    "got a refund",
+    "money was returned",
+)
+
 OLIST_DIRECT_OUTCOMES = {
     "Historical Olist order not found.",
     "Invalid Olist order ID.",
@@ -126,11 +176,49 @@ OLIST_DIRECT_OUTCOMES = {
     "Invalid Olist customer ID.",
 }
 
+OLIST_INTENT_ORDER_FACTS = "order_facts"
+OLIST_INTENT_REFUND_ELIGIBILITY = "refund_eligibility"
+OLIST_INTENT_REFUND_CONFIRMATION = "refund_confirmation"
+
 OLIST_REFUND_CUES = (
     "refund",
     "money back",
     "reimburse",
     "reimbursement",
+)
+
+OLIST_REFUND_CONFIRMATION_CUES = (
+    "refund issued",
+    "refund actually",
+    "actually issued",
+    "was a refund",
+    "was the refund",
+    "were they refunded",
+    "was refunded",
+    "got a refund",
+    "received a refund",
+    "refund processed",
+    "refund completed",
+    "refund confirmation",
+    "confirm a refund",
+    "confirm the refund",
+    "confirm whether a refund",
+    "did the customer get a refund",
+    "did they get a refund",
+    "did they receive a refund",
+    "has a refund been",
+    "money returned",
+)
+
+OLIST_REFUND_ELIGIBILITY_CUES = (
+    "eligible",
+    "eligibility",
+    "can i get a refund",
+    "can i refund",
+    "can i request a refund",
+    "qualify for a refund",
+    "qualify for refund",
+    "refund review",
 )
 
 OLIST_CANNOT_DETERMINE_MARKERS = (
@@ -142,6 +230,29 @@ OLIST_CANNOT_DETERMINE_MARKERS = (
     "not possible to determine",
     "cannot assess",
     "can't assess",
+)
+
+OLIST_NO_REFUND_EVIDENCE_MARKERS = (
+    "does not confirm that a refund was issued",
+    "does not confirm a refund was issued",
+    "no verified refund",
+    "no refund-issuance",
+    "no refund issuance",
+    "does not show that a refund was issued",
+    "does not show a refund was issued",
+    "no evidence that a refund was issued",
+    "no evidence of a refund",
+    "not confirm that a refund",
+    "cannot confirm that a refund was issued",
+    "cannot confirm a refund was issued",
+)
+
+OLIST_FALSE_NON_DELIVERY_CLAIMS = (
+    "never delivered",
+    "was not delivered",
+    "wasn't delivered",
+    "not delivered to the customer",
+    "order was never delivered",
 )
 
 # Internal fact-block phrasing that must never appear in customer-facing answers.
@@ -764,7 +875,7 @@ def resolve_olist_answer_fields(question: str) -> frozenset[str]:
     Fields that grounded answers / fallbacks must cover.
 
     Explicit requests win. Otherwise use a small default summary (status + review).
-    Refund questions are handled on a dedicated path and ignore this set.
+    Refund intents are handled on dedicated paths and ignore this set.
     """
     requested = detect_olist_requested_fields(question)
     if requested:
@@ -772,9 +883,46 @@ def resolve_olist_answer_fields(question: str) -> frozenset[str]:
     return OLIST_DEFAULT_SUMMARY_FIELDS
 
 
-def is_olist_refund_question(question: str) -> bool:
+def classify_olist_intent(question: str) -> str:
+    """
+    Separate Olist question intents so shared refund language cannot cross-contaminate.
+
+    Refund confirmation ("was a refund issued?") is distinct from refund eligibility
+    ("can I get a refund?"). All other questions use question-aware order facts.
+    """
     q = (question or "").casefold()
-    return any(cue in q for cue in OLIST_REFUND_CUES)
+    if any(cue in q for cue in OLIST_REFUND_CONFIRMATION_CUES) or (
+        any(cue in q for cue in OLIST_REFUND_CUES)
+        and any(
+            cue in q
+            for cue in (
+                "issued",
+                "processed",
+                "received",
+                "refunded",
+                "actually",
+                "confirmation",
+                "confirm",
+            )
+        )
+    ):
+        return OLIST_INTENT_REFUND_CONFIRMATION
+
+    if any(cue in q for cue in OLIST_REFUND_ELIGIBILITY_CUES) or any(
+        cue in q for cue in OLIST_REFUND_CUES
+    ):
+        return OLIST_INTENT_REFUND_ELIGIBILITY
+
+    return OLIST_INTENT_ORDER_FACTS
+
+
+def is_olist_refund_question(question: str) -> bool:
+    """True for refund-eligibility questions only (not refund-confirmation)."""
+    return classify_olist_intent(question) == OLIST_INTENT_REFUND_ELIGIBILITY
+
+
+def is_olist_refund_confirmation_question(question: str) -> bool:
+    return classify_olist_intent(question) == OLIST_INTENT_REFUND_CONFIRMATION
 
 
 def _olist_answer_leaks_internal(answer_lower: str) -> bool:
@@ -800,8 +948,58 @@ def _answer_includes_values(answer_lower: str, values: list[str]) -> bool:
     return True
 
 
-def render_olist_refund_fallback(verified_facts: str) -> str:
-    """Deterministic customer-facing answer for historical refund questions."""
+def _sum_decimal_strings(values: list[str]) -> str | None:
+    if not values:
+        return None
+    try:
+        total = sum(float(value) for value in values)
+    except ValueError:
+        return None
+    rendered = f"{total:.2f}"
+    if rendered.endswith(".00"):
+        return rendered[:-3]
+    return rendered
+
+
+def _olist_delivery_missing(verified_facts: str) -> bool:
+    match = re.search(
+        r"^Delivered to customer:\s*(.+)$",
+        verified_facts,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    if match is None:
+        return True
+    value = match.group(1).strip()
+    return (not value) or value.casefold() in {"none", "null", "n/a"}
+
+
+def _claims_false_non_delivery(answer_lower: str, verified_facts: str) -> bool:
+    """Reject definitive non-delivery claims when only a missing date is recorded."""
+    if not _olist_delivery_missing(verified_facts):
+        return False
+    return any(claim in answer_lower for claim in OLIST_FALSE_NON_DELIVERY_CLAIMS)
+
+
+def _claims_refund_was_issued(answer_lower: str) -> bool:
+    """Detect affirmative issuance claims, ignoring explicit no-evidence phrasing."""
+    scrubbed = answer_lower
+    for marker in OLIST_NO_REFUND_EVIDENCE_MARKERS:
+        scrubbed = scrubbed.replace(marker, " ")
+    # Common negated wrappers that should not count as issuance claims.
+    for marker in (
+        "does not confirm that a refund was issued",
+        "did not receive a refund",
+        "no refund was issued",
+        "refund was not issued",
+        "was not refunded",
+        "never received a refund",
+    ):
+        scrubbed = scrubbed.replace(marker, " ")
+    return any(phrase in scrubbed for phrase in OLIST_REFUND_ISSUED_CLAIMS)
+
+
+def render_olist_refund_eligibility_fallback(verified_facts: str) -> str:
+    """Deterministic answer for historical refund-eligibility questions."""
     order_id = _olist_order_id_from_facts(verified_facts) or "unknown"
     status = _olist_fact_value(verified_facts, "Historical status")
     delivered = _olist_fact_value(verified_facts, "Delivered to customer")
@@ -818,18 +1016,42 @@ def render_olist_refund_fallback(verified_facts: str) -> str:
     )
 
 
+def render_olist_refund_fallback(verified_facts: str) -> str:
+    """Backward-compatible alias for eligibility fallback."""
+    return render_olist_refund_eligibility_fallback(verified_facts)
+
+
+def render_olist_refund_confirmation_fallback(verified_facts: str) -> str:
+    """Deterministic answer when users ask whether a refund was actually issued."""
+    order_id = _olist_order_id_from_facts(verified_facts) or "unknown"
+    status = _olist_fact_value(verified_facts, "Historical status")
+
+    detail = f"Historical Olist order {order_id}"
+    if status:
+        detail += f" has historical status {status}"
+
+    return (
+        f"{detail}. "
+        "The historical record does not confirm that a refund was issued."
+    )
+
+
 def render_olist_order_fallback(verified_facts: str, question: str = "") -> str:
     """Question-aware order summary without internal fact-block instructions."""
     order_id = _olist_order_id_from_facts(verified_facts) or "unknown"
     fields = resolve_olist_answer_fields(question)
     status = _olist_fact_value(verified_facts, "Historical status")
     delivered = _olist_fact_value(verified_facts, "Delivered to customer")
+    delivery_missing = _olist_delivery_missing(verified_facts)
 
     parts: list[str] = [f"Historical Olist order {order_id}"]
     if OLIST_FIELD_STATUS in fields and status:
         parts[0] += f" has status {status}"
-    if OLIST_FIELD_DELIVERY in fields and delivered:
-        parts[0] += f" (delivered {delivered})"
+    if OLIST_FIELD_DELIVERY in fields:
+        if delivered:
+            parts[0] += f" (delivered {delivered})"
+        elif delivery_missing:
+            parts[0] += " (no customer delivery date is recorded)"
     parts[0] += "."
 
     detail_bits: list[str] = []
@@ -842,13 +1064,21 @@ def render_olist_order_fallback(verified_facts: str, question: str = "") -> str:
         if len(prices) == 1:
             detail_bits.append(f"item price {prices[0]}")
         else:
-            detail_bits.append(f"item prices {', '.join(prices)}")
+            price_total = _sum_decimal_strings(prices)
+            bit = f"item prices {', '.join(prices)}"
+            if price_total:
+                bit += f" (items total {price_total})"
+            detail_bits.append(bit)
 
     if OLIST_FIELD_FREIGHT in fields and freights:
         if len(freights) == 1:
             detail_bits.append(f"shipping/freight {freights[0]}")
         else:
-            detail_bits.append(f"shipping/freight amounts {', '.join(freights)}")
+            freight_total = _sum_decimal_strings(freights)
+            bit = f"shipping/freight amounts {', '.join(freights)}"
+            if freight_total:
+                bit += f" (freight total {freight_total})"
+            detail_bits.append(bit)
 
     if payments and (
         OLIST_FIELD_PAYMENT_TYPE in fields
@@ -907,7 +1137,7 @@ def render_olist_customer_fallback(verified_facts: str) -> str:
 
 
 def render_olist_safe_fallback(question: str, verified_facts: str) -> str:
-    """Customer-facing fallback that never exposes raw tool/fact-block text."""
+    """Intent-aware customer-facing fallback; never exposes raw tool/fact-block text."""
     facts = (verified_facts or "").strip()
     if not facts:
         return "Historical Olist order not found."
@@ -915,8 +1145,12 @@ def render_olist_safe_fallback(question: str, verified_facts: str) -> str:
         return facts
     if _olist_customer_id_from_facts(facts):
         return render_olist_customer_fallback(facts)
-    if is_olist_refund_question(question):
-        return render_olist_refund_fallback(facts)
+
+    intent = classify_olist_intent(question)
+    if intent == OLIST_INTENT_REFUND_CONFIRMATION:
+        return render_olist_refund_confirmation_fallback(facts)
+    if intent == OLIST_INTENT_REFUND_ELIGIBILITY:
+        return render_olist_refund_eligibility_fallback(facts)
     return render_olist_order_fallback(facts, question)
 
 
@@ -998,21 +1232,40 @@ def _olist_requested_fields_grounded(
     return True
 
 
+def _olist_prompts_for_intent(intent: str, *, retry: bool) -> str:
+    if intent == OLIST_INTENT_REFUND_CONFIRMATION:
+        return (
+            OLIST_REFUND_CONFIRMATION_RETRY_PROMPT
+            if retry
+            else OLIST_REFUND_CONFIRMATION_SYSTEM_PROMPT
+        )
+    if intent == OLIST_INTENT_REFUND_ELIGIBILITY:
+        return (
+            OLIST_REFUND_ELIGIBILITY_RETRY_PROMPT
+            if retry
+            else OLIST_REFUND_ELIGIBILITY_SYSTEM_PROMPT
+        )
+    return OLIST_RETRY_SYSTEM_PROMPT if retry else OLIST_RESPONSE_SYSTEM_PROMPT
+
+
 def is_olist_answer_grounded(
     answer: str,
     verified_facts: str,
     question: str = "",
 ) -> bool:
-    """Light grounding for Olist summaries — not the numeric-anchor validator."""
+    """Intent-aware grounding for Olist summaries — not the numeric-anchor validator."""
     if not isinstance(answer, str) or not answer.strip():
         return False
 
     answer = _clean_candidate(answer)
     answer_lower = answer.casefold()
     facts_lower = verified_facts.casefold()
-    refund_question = is_olist_refund_question(question)
+    intent = classify_olist_intent(question)
 
     if _olist_answer_leaks_internal(answer_lower):
+        return False
+
+    if _claims_false_non_delivery(answer_lower, verified_facts):
         return False
 
     if (
@@ -1037,8 +1290,26 @@ def is_olist_answer_grounded(
         # Require an explicit historical/olist cue so live-ops confusion is avoided.
         return False
 
-    if refund_question:
+    if intent == OLIST_INTENT_REFUND_ELIGIBILITY:
         if not any(marker in answer_lower for marker in OLIST_CANNOT_DETERMINE_MARKERS):
+            return False
+        for phrase in OLIST_FORBIDDEN_INFERENCES:
+            if phrase in answer_lower:
+                return False
+        if _claims_refund_was_issued(answer_lower):
+            return False
+        for phrase in HIGH_RISK_PHRASES:
+            if phrase in answer_lower and phrase not in facts_lower:
+                return False
+        return True
+
+    if intent == OLIST_INTENT_REFUND_CONFIRMATION:
+        if not any(marker in answer_lower for marker in OLIST_NO_REFUND_EVIDENCE_MARKERS):
+            return False
+        if _claims_refund_was_issued(answer_lower):
+            return False
+        # Eligibility-only boilerplate is the wrong intent for confirmation questions.
+        if any(marker in answer_lower for marker in OLIST_CANNOT_DETERMINE_MARKERS):
             return False
         for phrase in OLIST_FORBIDDEN_INFERENCES:
             if phrase in answer_lower:
@@ -1072,7 +1343,7 @@ def generate_olist_response(
     max_attempts: int = 2,
 ) -> GeneratedResponse:
     """
-    Natural historical-Olist answer with a dedicated validator.
+    Natural historical-Olist answer with intent-aware validation.
 
     Does not use extract_required_anchors / numeric inventory-order grounding.
     Falls back to a concise customer-facing summary — never raw tool output.
@@ -1099,7 +1370,7 @@ def generate_olist_response(
             )
         )
 
-    refund_question = is_olist_refund_question(question)
+    intent = classify_olist_intent(question)
     candidates: list[str] = []
     last_reason = "validation_failed"
     previous = None
@@ -1107,18 +1378,7 @@ def generate_olist_response(
 
     for attempt in range(1, attempts + 1):
         try:
-            if refund_question:
-                system = (
-                    OLIST_REFUND_RETRY_SYSTEM_PROMPT
-                    if attempt > 1
-                    else OLIST_REFUND_RESPONSE_SYSTEM_PROMPT
-                )
-            else:
-                system = (
-                    OLIST_RETRY_SYSTEM_PROMPT
-                    if attempt > 1
-                    else OLIST_RESPONSE_SYSTEM_PROMPT
-                )
+            system = _olist_prompts_for_intent(intent, retry=attempt > 1)
             human_parts = [
                 f"Question: {question}",
                 f"Verified facts:\n{facts}",
