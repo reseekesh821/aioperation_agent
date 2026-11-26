@@ -75,3 +75,66 @@ button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+#support-inbox {
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+#support-inbox h2 {
+    margin: 0 0 8px;
+    font-size: 1.25rem;
+}
+
+.support-inbox-help {
+    margin: 0 0 14px;
+    color: #6b7280;
+    text-align: left;
+}
+
+#load-emails-button {
+    margin-bottom: 12px;
+}
+
+#support-inbox-status {
+    min-height: 1.25em;
+    margin-bottom: 12px;
+    color: #4b5563;
+}
+
+#support-inbox-status.is-error {
+    color: #b91c1c;
+}
+
+#support-email-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.support-email {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.support-email-meta {
+    margin: 0 0 6px;
+    color: #374151;
+    font-size: 0.95rem;
+}
+
+.support-email-subject {
+    margin: 0 0 10px;
+    font-weight: 700;
+}
+
+.support-email-body {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #1f2937;
+    line-height: 1.45;
+}
