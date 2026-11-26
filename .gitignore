@@ -8,3 +8,5 @@ __pycache__/
 
 # Generated ChromaDB index (rebuilt from policy text at runtime)
 data/chroma/
+
+/data/raw/

@@ -24,6 +24,18 @@ from backend.app.agents.validation import (
         ("Can I get store credit?", "policy_lookup"),
         ("Hello there", None),
         ("What about 1003?", None),
+        (
+            "What is the status of order e481f51cbdc54678b7cc49136f2d6af7?",
+            "olist_order_lookup",
+        ),
+        (
+            "Is order e481f51cbdc54678b7cc49136f2d6af7 eligible for a refund?",
+            "olist_order_lookup",
+        ),
+        (
+            "Look up customer ID 06b8999e2fba1a1fbc88172c00ba8bc7",
+            "olist_customer_lookup",
+        ),
     ],
 )
 def test_expected_tool(question, expected):

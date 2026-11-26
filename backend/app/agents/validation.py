@@ -13,6 +13,15 @@ ORDER_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Olist IDs are 32-character hexadecimal strings (orders or customers).
+OLIST_HEX_ID_PATTERN = re.compile(r"\b([a-f0-9]{32})\b", re.IGNORECASE)
+
+# Explicit customer-id cues distinguish customer lookups from order lookups.
+OLIST_CUSTOMER_CUE_PATTERN = re.compile(
+    r"\bcustomer(?:\s*(?:id|number|#)|_id)\b",
+    re.IGNORECASE,
+)
+
 INVENTORY_CUES = (
     "inventory",
     "stock",
@@ -42,6 +51,33 @@ def extract_order_id(question: str) -> int | None:
     return int(match.group(1))
 
 
+def extract_olist_hex_id(question: str) -> str | None:
+    match = OLIST_HEX_ID_PATTERN.search(question)
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def is_olist_customer_query(question: str) -> bool:
+    q = question.casefold()
+    if OLIST_CUSTOMER_CUE_PATTERN.search(question):
+        return True
+    # "look up customer <hex>" without calling it an order
+    return bool(re.search(r"\bcustomer\b", q) and not re.search(r"\border\b", q))
+
+
+def extract_olist_order_id(question: str) -> str | None:
+    if is_olist_customer_query(question):
+        return None
+    return extract_olist_hex_id(question)
+
+
+def extract_olist_customer_id(question: str) -> str | None:
+    if not is_olist_customer_query(question):
+        return None
+    return extract_olist_hex_id(question)
+
+
 def valid_order_reference(question: str, order_id: int) -> bool:
     if not isinstance(order_id, int) or isinstance(order_id, bool):
         return False
@@ -50,6 +86,28 @@ def valid_order_reference(question: str, order_id: int) -> bool:
         return False
 
     return extract_order_id(question) == order_id
+
+
+def valid_olist_order_reference(question: str, order_id: str) -> bool:
+    if not isinstance(order_id, str):
+        return False
+
+    extracted = extract_olist_order_id(question)
+    if extracted is None:
+        return False
+
+    return order_id.strip().lower() == extracted
+
+
+def valid_olist_customer_reference(question: str, customer_id: str) -> bool:
+    if not isinstance(customer_id, str):
+        return False
+
+    extracted = extract_olist_customer_id(question)
+    if extracted is None:
+        return False
+
+    return customer_id.strip().lower() == extracted
 
 
 def expected_tool(question: str) -> str | None:
@@ -62,6 +120,13 @@ def expected_tool(question: str) -> str | None:
         if "refund" in q:
             return "refund_lookup"
         return "order_lookup"
+
+    if extract_olist_customer_id(question) is not None:
+        return "olist_customer_lookup"
+
+    if extract_olist_order_id(question) is not None:
+        # Historical Olist records never use live refund tooling.
+        return "olist_order_lookup"
 
     # Policy/refund questions take precedence over inventory cues like "do you have".
     if any(cue in q for cue in POLICY_CUES):
@@ -92,6 +157,12 @@ def validate_tool_call(question: str, call: dict) -> bool:
             order_id = int(order_id)
 
         return valid_order_reference(question, order_id)
+
+    if name == "olist_order_lookup":
+        return valid_olist_order_reference(question, args.get("order_id"))
+
+    if name == "olist_customer_lookup":
+        return valid_olist_customer_reference(question, args.get("customer_id"))
 
     if name == "inventory_lookup":
         product = args.get("product_name")
