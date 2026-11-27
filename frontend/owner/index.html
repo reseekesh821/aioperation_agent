@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../shared/base.css">
     <link rel="stylesheet" href="style.css">
     <title>Owner Support Workspace</title>
 </head>
@@ -15,13 +14,34 @@
             Localhost operator tools for labeled Gmail support mail.
             Separate pages and CORS are not authentication.
         </p>
-        <nav class="owner-nav" aria-label="Owner workspace sections">
-            <a href="#support-inbox">Inbox</a>
-            <a href="#support-cases">Cases</a>
+        <nav class="owner-nav" aria-label="Owner workspace views">
+            <button
+                type="button"
+                id="nav-inbox"
+                class="owner-nav-button is-active"
+                data-view="inbox"
+                aria-pressed="true"
+            >
+                Inbox
+            </button>
+            <button
+                type="button"
+                id="nav-cases"
+                class="owner-nav-button"
+                data-view="cases"
+                aria-pressed="false"
+            >
+                Cases
+            </button>
         </nav>
     </header>
 
-    <section id="support-inbox" aria-labelledby="support-inbox-title">
+    <section
+        id="support-inbox"
+        class="owner-view"
+        aria-labelledby="support-inbox-title"
+        data-view-panel="inbox"
+    >
         <h2 id="support-inbox-title">Customer Support Inbox</h2>
         <p class="support-inbox-help">
             Load up to five labeled Gmail messages from AI-Operations-Test.
@@ -31,7 +51,13 @@
         <div id="support-email-list"></div>
     </section>
 
-    <section id="support-cases" aria-labelledby="support-cases-title">
+    <section
+        id="support-cases"
+        class="owner-view"
+        aria-labelledby="support-cases-title"
+        data-view-panel="cases"
+        hidden
+    >
         <h2 id="support-cases-title">Support Cases</h2>
         <p class="support-inbox-help">
             Persistent case dashboard for labeled support requests. Sync creates
@@ -47,7 +73,6 @@
         <div id="support-case-detail" hidden></div>
     </section>
 
-    <script src="../shared/config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
