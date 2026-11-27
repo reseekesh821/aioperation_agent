@@ -436,6 +436,8 @@ def generate_support_draft(
 
     return {
         "message_id": findings.get("message_id") or message_id,
+        "thread_id": findings.get("thread_id") or "",
+        "subject": findings.get("subject") or "",
         "intent": findings.get("intent"),
         "order_id": findings.get("order_id"),
         "olist_order_id": findings.get("olist_order_id"),

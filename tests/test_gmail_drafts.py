@@ -213,10 +213,15 @@ def test_save_draft_endpoint_success(monkeypatch):
             "thread_id": "thread-1",
             "recipient": "customer@example.com",
             "subject": "Re: Help",
+            "source_subject": "Help",
             "status": "saved_not_sent",
             "sent": False,
             "saved_text": draft_text,
         },
+    )
+    monkeypatch.setattr(
+        "backend.app.main.record_draft_saved",
+        lambda **kwargs: None,
     )
 
     edited = "Operator edited this reply carefully."
@@ -244,11 +249,16 @@ def test_save_draft_endpoint_passes_edited_text(monkeypatch):
             "thread_id": "thread-1",
             "recipient": "customer@example.com",
             "subject": "Re: Help",
+            "source_subject": "Help",
             "status": "saved_not_sent",
             "sent": False,
         }
 
     monkeypatch.setattr("backend.app.main.save_support_reply_draft", fake_save)
+    monkeypatch.setattr(
+        "backend.app.main.record_draft_saved",
+        lambda **kwargs: None,
+    )
     edited = "This is the human-edited body, not the AI draft."
     response = client.post(
         "/support/emails/msg-22/save-draft",

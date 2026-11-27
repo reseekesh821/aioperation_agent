@@ -290,6 +290,7 @@ def test_draft_endpoint_success(monkeypatch):
             "status": "not_sent",
         },
     )
+    monkeypatch.setattr("backend.app.main.record_draft_ready", lambda result: None)
 
     response = client.post("/support/emails/msg-1003/draft")
     assert response.status_code == 200
@@ -305,6 +306,7 @@ def test_draft_endpoint_gmail_error(monkeypatch):
         raise GmailApiError("Failed to fetch a labeled Gmail message.")
 
     monkeypatch.setattr("backend.app.main.generate_support_draft", raise_gmail)
+    monkeypatch.setattr("backend.app.main.record_draft_ready", lambda result: None)
     response = client.post("/support/emails/msg-1/draft")
     assert response.status_code == 502
 
@@ -314,5 +316,6 @@ def test_draft_endpoint_ollama_error(monkeypatch):
         raise ConnectionError("ollama down")
 
     monkeypatch.setattr("backend.app.main.generate_support_draft", raise_ai)
+    monkeypatch.setattr("backend.app.main.record_draft_ready", lambda result: None)
     response = client.post("/support/emails/msg-1/draft")
     assert response.status_code == 503

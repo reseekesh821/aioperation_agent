@@ -20,8 +20,18 @@ from backend.app.integrations.gmail_reader import (
     GmailMessageNotAllowedError,
     fetch_support_emails,
 )
+from backend.app.integrations.support_case_management import (
+    get_support_case_detail,
+    list_support_cases_dashboard,
+    record_draft_ready,
+    record_draft_saved,
+    record_investigation_success,
+    sync_support_cases,
+    update_support_case_status,
+)
 from backend.app.integrations.support_draft import generate_support_draft
 from backend.app.integrations.support_investigation import investigate_support_email
+from backend.app.services.support_cases import MANUAL_STATUSES
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,6 +72,28 @@ class SaveGmailDraftRequest(BaseModel):
         if not cleaned:
             raise ValueError("Draft text cannot be empty")
         return cleaned
+
+
+class UpdateCaseStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=64)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        cleaned = value.strip().casefold()
+        if cleaned not in MANUAL_STATUSES:
+            raise ValueError(
+                "status must be one of: needs_attention, closed"
+            )
+        return cleaned
+
+
+def _safe_record_case(action: str, callback) -> None:
+    """Persist case lifecycle updates without failing the primary support action."""
+    try:
+        callback()
+    except Exception:  # noqa: BLE001
+        logger.exception("support_case_%s_failed", action)
 
 
 @app.get("/health")
@@ -178,6 +210,10 @@ def investigate_support_email_endpoint(message_id: str):
         request_id,
         findings.get("intent"),
     )
+    _safe_record_case(
+        "investigated",
+        lambda: record_investigation_success(findings),
+    )
     presentation = findings.get("presentation") or {}
     # Never return raw email body/sender from this endpoint.
     # Prefer operator presentation over raw tool dumps for UI consumption.
@@ -241,6 +277,10 @@ def generate_support_draft_endpoint(message_id: str):
         request_id,
         result.get("used_fallback"),
     )
+    _safe_record_case(
+        "draft_ready",
+        lambda: record_draft_ready(result),
+    )
     return {
         "message_id": result.get("message_id"),
         "intent": result.get("intent"),
@@ -284,6 +324,16 @@ def save_support_gmail_draft_endpoint(
         request_id,
         bool(result.get("draft_id")),
     )
+    if result.get("draft_id"):
+        _safe_record_case(
+            "draft_saved",
+            lambda: record_draft_saved(
+                message_id=result.get("message_id") or message_id,
+                draft_id=result.get("draft_id"),
+                subject=result.get("source_subject") or None,
+                thread_id=result.get("thread_id") or None,
+            ),
+        )
     return {
         "message_id": result.get("message_id"),
         "draft_id": result.get("draft_id"),
@@ -293,6 +343,100 @@ def save_support_gmail_draft_endpoint(
         "status": result.get("status") or "saved_not_sent",
         "sent": False,
     }
+
+
+@app.post("/support/cases/sync")
+def sync_support_cases_endpoint():
+    """Sync labeled Gmail messages into persistent support cases (idempotent)."""
+    request_id = uuid4().hex[:8]
+    logger.info("support_cases_sync_started request_id=%s", request_id)
+
+    try:
+        result = sync_support_cases()
+    except GmailAuthError as exc:
+        logger.warning("support_cases_sync_auth_failed request_id=%s", request_id)
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GmailLabelNotFoundError as exc:
+        logger.warning("support_cases_sync_label_missing request_id=%s", request_id)
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GmailApiError as exc:
+        logger.warning("support_cases_sync_gmail_failed request_id=%s", request_id)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("support_cases_sync_failed request_id=%s", request_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Support case storage is unavailable.",
+        ) from exc
+
+    logger.info(
+        "support_cases_sync_completed request_id=%s synced=%s",
+        request_id,
+        result.get("synced_count"),
+    )
+    return result
+
+
+@app.get("/support/cases")
+def list_support_cases_endpoint():
+    """List persistent support cases with status counts."""
+    request_id = uuid4().hex[:8]
+    logger.info("support_cases_list_started request_id=%s", request_id)
+    try:
+        return list_support_cases_dashboard()
+    except Exception as exc:
+        logger.exception("support_cases_list_failed request_id=%s", request_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Support case storage is unavailable.",
+        ) from exc
+
+
+@app.get("/support/cases/{case_id}")
+def get_support_case_endpoint(case_id: int):
+    """Return one case and its activity history."""
+    request_id = uuid4().hex[:8]
+    logger.info("support_case_detail_started request_id=%s", request_id)
+    try:
+        detail = get_support_case_detail(case_id)
+    except Exception as exc:
+        logger.exception("support_case_detail_failed request_id=%s", request_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Support case storage is unavailable.",
+        ) from exc
+
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Support case not found.")
+    return detail
+
+
+@app.post("/support/cases/{case_id}/status")
+def update_support_case_status_endpoint(
+    case_id: int,
+    request: UpdateCaseStatusRequest,
+):
+    """Manual operator status updates: needs_attention or closed only."""
+    request_id = uuid4().hex[:8]
+    logger.info(
+        "support_case_status_started request_id=%s status=%s",
+        request_id,
+        request.status,
+    )
+    try:
+        case = update_support_case_status(case_id, request.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("support_case_status_failed request_id=%s", request_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Support case storage is unavailable.",
+        ) from exc
+
+    if case is None:
+        raise HTTPException(status_code=404, detail="Support case not found.")
+    return {"case": case}
 
 
 # python -m uvicorn backend.app.main:app --reload

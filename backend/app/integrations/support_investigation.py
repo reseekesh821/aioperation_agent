@@ -577,6 +577,8 @@ def investigate_support_email(
 
     findings = {
         "message_id": email.get("id") or message_id,
+        "thread_id": email.get("thread_id") or "",
+        "subject": subject,
         "intent": intent,
         "order_id": order_id,
         "olist_order_id": olist_order_id,
