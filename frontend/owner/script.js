@@ -1,7 +1,5 @@
-const form = document.getElementById("chat-form");
-const input = document.getElementById("message-input");
-const chatBox = document.getElementById("chat-box");
-const button = form.querySelector("button");
+const API_BASE = window.AIOPS_API_BASE || "http://127.0.0.1:8000";
+
 const loadEmailsButton = document.getElementById("load-emails-button");
 const supportStatus = document.getElementById("support-inbox-status");
 const supportEmailList = document.getElementById("support-email-list");
@@ -11,17 +9,6 @@ const supportCasesStatus = document.getElementById("support-cases-status");
 const supportCasesSummary = document.getElementById("support-cases-summary");
 const supportCasesList = document.getElementById("support-cases-list");
 const supportCaseDetail = document.getElementById("support-case-detail");
-
-function addMessage(sender, message) {
-    const p = document.createElement("p");
-    if (sender === "You") {
-    p.classList.add("user-message");
-    }
-    p.textContent = `${sender}: ${message}`;
-    chatBox.appendChild(p);
-    chatBox.scrollTop = chatBox.scrollHeight;
-    return p;
-}
 
 function setSupportStatus(message, isError = false) {
     supportStatus.textContent = message;
@@ -138,7 +125,7 @@ function renderDraftPanel(container, messageId) {
 
         try {
             const response = await fetch(
-                `http://127.0.0.1:8000/support/emails/${encodeURIComponent(messageId)}/save-draft`,
+                `${API_BASE}/support/emails/${encodeURIComponent(messageId)}/save-draft`,
                 {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
@@ -181,7 +168,7 @@ function renderDraftPanel(container, messageId) {
 
         try {
             const response = await fetch(
-                `http://127.0.0.1:8000/support/emails/${encodeURIComponent(messageId)}/draft`,
+                `${API_BASE}/support/emails/${encodeURIComponent(messageId)}/draft`,
                 {method: "POST"}
             );
             const data = await response.json().catch(() => ({}));
@@ -282,7 +269,7 @@ async function investigateSupportEmail(messageId, button, findingsEl) {
 
     try {
         const response = await fetch(
-            `http://127.0.0.1:8000/support/emails/${encodeURIComponent(messageId)}/investigate`,
+            `${API_BASE}/support/emails/${encodeURIComponent(messageId)}/investigate`,
             {method: "POST"}
         );
         const data = await response.json().catch(() => ({}));
@@ -358,42 +345,13 @@ function renderSupportEmails(emails) {
     }
 }
 
-form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    const message = input.value.trim();
-    if (!message) return;
-
-    addMessage("You", message);
-    input.value = "";
-    button.disabled = true;
-    const pendingMessage = addMessage("Assistant", "Thinking...");
-
-    try {
-        const response = await fetch("http://127.0.0.1:8000/chat", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({message})
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        pendingMessage.textContent = `Assistant: ${data.answer}`;
-    } catch (error) {
-        pendingMessage.textContent = "System: Unable to reach the AI agent.";
-    } finally {
-        button.disabled = false;
-    }
-});
-
 loadEmailsButton.addEventListener("click", async () => {
     loadEmailsButton.disabled = true;
     supportEmailList.replaceChildren();
     setSupportStatus("Loading support emails...");
 
     try {
-        const response = await fetch("http://127.0.0.1:8000/support/emails");
+        const response = await fetch(`${API_BASE}/support/emails`);
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
@@ -566,7 +524,7 @@ async function loadSupportCases({quiet = false} = {}) {
     if (!quiet) {
         setCasesStatus("Loading cases...");
     }
-    const response = await fetch("http://127.0.0.1:8000/support/cases");
+    const response = await fetch(`${API_BASE}/support/cases`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         throw new Error(data.detail || `HTTP ${response.status}`);
@@ -584,7 +542,7 @@ async function openSupportCase(caseId, button) {
     setCasesStatus(`Opening case #${caseId}...`);
     try {
         const response = await fetch(
-            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}`
+            `${API_BASE}/support/cases/${encodeURIComponent(caseId)}`
         );
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -606,7 +564,7 @@ async function updateCaseStatus(caseId, status, button) {
     button.disabled = true;
     try {
         const response = await fetch(
-            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}/status`,
+            `${API_BASE}/support/cases/${encodeURIComponent(caseId)}/status`,
             {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -619,7 +577,7 @@ async function updateCaseStatus(caseId, status, button) {
         }
         await loadSupportCases({quiet: true});
         const detailResponse = await fetch(
-            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}`
+            `${API_BASE}/support/cases/${encodeURIComponent(caseId)}`
         );
         const detail = await detailResponse.json().catch(() => ({}));
         if (detailResponse.ok) {
@@ -641,7 +599,7 @@ syncCasesButton.addEventListener("click", async () => {
     refreshCasesButton.disabled = true;
     setCasesStatus("Syncing labeled Gmail messages into cases...");
     try {
-        const response = await fetch("http://127.0.0.1:8000/support/cases/sync", {
+        const response = await fetch(`${API_BASE}/support/cases/sync`, {
             method: "POST",
         });
         const data = await response.json().catch(() => ({}));

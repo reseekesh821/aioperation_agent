@@ -43,9 +43,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Operations Agent")
 
+# Localhost-only static frontends. Separate ports are not authentication.
+CORS_ALLOW_ORIGINS = [
+    "http://127.0.0.1:5500",  # customer portal
+    "http://127.0.0.1:5501",  # owner support workspace
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5500", "http://127.0.0.1:5500"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
