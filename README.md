@@ -17,9 +17,9 @@ The LLM proposes answers; Python enforces business rules, tool permissions, and 
 ## Architecture
 
 ```
-Customer portal (:5500)  ─┐
+Customer portal (:5000)  ─┐
                           ├→ FastAPI (backend :8000)
-Owner workspace (:5501)  ─┘
+Owner workspace (:5001)  ─┘
         → LangGraph agent + Gmail/support case services
             → PostgreSQL (orders, inventory, olist, support)
             → ChromaDB + nomic-embed-text (policy RAG)
@@ -80,22 +80,18 @@ On first start only, Compose mounts `infra/init.sql` into Postgres’s init dire
 
 4. **Start the frontends** (exact ports required by CORS)
 
-Customer portal (chat only):
+From the project root:
 
 ```bash
-cd frontend/customer
-python -m http.server 5500
+python -m http.server 5000 --bind 127.0.0.1 --directory frontend/customer
 ```
-
-Owner support workspace (inbox + cases):
 
 ```bash
-cd frontend/owner
-python -m http.server 5501
+python -m http.server 5001 --bind 127.0.0.1 --directory frontend/owner
 ```
 
-- Customer: `http://127.0.0.1:5500`
-- Owner: `http://127.0.0.1:5501`
+- Customer: `http://127.0.0.1:5000/`
+- Owner: `http://127.0.0.1:5001/` (Inbox / Cases views)
 
 Example customer questions:
 
@@ -133,9 +129,8 @@ Ollama must be available for live RAG / generation tests.
 backend/app/          FastAPI app, LangGraph agent, services
 data/policies/        Authoritative refund policy text
 data/chroma/          Generated vector index (gitignored)
-frontend/customer/    Customer chatbot portal (:5500)
-frontend/owner/       Owner support workspace (:5501)
-frontend/shared/      Shared API base URL + base CSS
+frontend/customer/    Customer chatbot portal (:5000)
+frontend/owner/       Owner support workspace (:5001)
 infra/init.sql        Fresh-database schema + seed data
 infra/support_schema.sql  Support case schema (apply separately if needed)
 compose.yaml          Postgres + backend services
@@ -147,7 +142,8 @@ Dockerfile            Backend image
 - The backend reaches host Ollama via `host.docker.internal`.
 - ChromaDB data is stored under `data/chroma/` and recreated from policy text when empty.
 - Sample JSON files under `data/` mirror the seed rows for reference; runtime reads come from PostgreSQL.
-- CORS allows only `http://127.0.0.1:5500` and `http://127.0.0.1:5501` (no wildcard).
+- CORS allows only `http://127.0.0.1:5000` and `http://127.0.0.1:5001` (no wildcard).
+- Serve each app directory as the HTTP root so `/` opens the app directly.
 
 ## Security limitations (localhost development)
 

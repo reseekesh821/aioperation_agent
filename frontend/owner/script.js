@@ -1,4 +1,4 @@
-const API_BASE = window.AIOPS_API_BASE || "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:8000";
 
 const loadEmailsButton = document.getElementById("load-emails-button");
 const supportStatus = document.getElementById("support-inbox-status");
@@ -9,6 +9,31 @@ const supportCasesStatus = document.getElementById("support-cases-status");
 const supportCasesSummary = document.getElementById("support-cases-summary");
 const supportCasesList = document.getElementById("support-cases-list");
 const supportCaseDetail = document.getElementById("support-case-detail");
+const inboxPanel = document.getElementById("support-inbox");
+const casesPanel = document.getElementById("support-cases");
+const navInboxButton = document.getElementById("nav-inbox");
+const navCasesButton = document.getElementById("nav-cases");
+
+function showOwnerView(view) {
+    const selected = view === "cases" ? "cases" : "inbox";
+    inboxPanel.hidden = selected !== "inbox";
+    casesPanel.hidden = selected !== "cases";
+
+    navInboxButton.classList.toggle("is-active", selected === "inbox");
+    navCasesButton.classList.toggle("is-active", selected === "cases");
+    navInboxButton.setAttribute("aria-pressed", selected === "inbox" ? "true" : "false");
+    navCasesButton.setAttribute("aria-pressed", selected === "cases" ? "true" : "false");
+}
+
+navInboxButton.addEventListener("click", () => {
+    showOwnerView("inbox");
+});
+
+navCasesButton.addEventListener("click", () => {
+    showOwnerView("cases");
+});
+
+showOwnerView("inbox");
 
 function setSupportStatus(message, isError = false) {
     supportStatus.textContent = message;
