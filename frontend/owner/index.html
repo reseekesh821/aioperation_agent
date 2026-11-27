@@ -3,27 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../shared/base.css">
     <link rel="stylesheet" href="style.css">
-    <title>AI Operations Agent</title>
+    <title>Owner Support Workspace</title>
 </head>
 
 <body>
-    <h1>AI Operations Agent</h1>
-    <p>Ask about orders, inventory, and refund policies.</p>
-
-    <div id="chat-box">
-        <p>Assistant: How can I help you today?</p>
-    </div>
-
-    <form id="chat-form">
-        <input
-            id="message-input"
-            type="text"
-            placeholder="Type your question..."
-            required
-        >
-        <button type="submit">Send</button>
-    </form>
+    <header class="owner-header">
+        <h1>Owner Support Workspace</h1>
+        <p class="owner-subtitle">
+            Localhost operator tools for labeled Gmail support mail.
+            Separate pages and CORS are not authentication.
+        </p>
+        <nav class="owner-nav" aria-label="Owner workspace sections">
+            <a href="#support-inbox">Inbox</a>
+            <a href="#support-cases">Cases</a>
+        </nav>
+    </header>
 
     <section id="support-inbox" aria-labelledby="support-inbox-title">
         <h2 id="support-inbox-title">Customer Support Inbox</h2>
@@ -51,6 +47,7 @@
         <div id="support-case-detail" hidden></div>
     </section>
 
+    <script src="../shared/config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

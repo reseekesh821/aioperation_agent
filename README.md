@@ -17,11 +17,11 @@ The LLM proposes answers; Python enforces business rules, tool permissions, and 
 ## Architecture
 
 ```
-Browser (frontend :5500)
-    → FastAPI /chat (backend :8000)
-        → LangGraph agent
-            → Tools: inventory | orders | refunds | policy retrieval
-            → PostgreSQL (orders, inventory)
+Customer portal (:5500)  ─┐
+                          ├→ FastAPI (backend :8000)
+Owner workspace (:5501)  ─┘
+        → LangGraph agent + Gmail/support case services
+            → PostgreSQL (orders, inventory, olist, support)
             → ChromaDB + nomic-embed-text (policy RAG)
             → llama3.1:8b (structured planning + natural answers)
             → Python grounding validation → answer or verified fallback
@@ -78,14 +78,26 @@ docker compose up -d
 
 On first start only, Compose mounts `infra/init.sql` into Postgres’s init directory and seeds sample orders and inventory. Existing volumes are left untouched; init scripts do **not** re-run against an already-initialized database.
 
-4. **Start the frontend** (port 5500 — required by CORS)
+4. **Start the frontends** (exact ports required by CORS)
+
+Customer portal (chat only):
 
 ```bash
-cd frontend
+cd frontend/customer
 python -m http.server 5500
 ```
 
-Open `http://127.0.0.1:5500` and ask questions such as:
+Owner support workspace (inbox + cases):
+
+```bash
+cd frontend/owner
+python -m http.server 5501
+```
+
+- Customer: `http://127.0.0.1:5500`
+- Owner: `http://127.0.0.1:5501`
+
+Example customer questions:
 
 - How many monitors are available?
 - What is the status of order 1003?
@@ -121,8 +133,11 @@ Ollama must be available for live RAG / generation tests.
 backend/app/          FastAPI app, LangGraph agent, services
 data/policies/        Authoritative refund policy text
 data/chroma/          Generated vector index (gitignored)
-frontend/             Chat UI
+frontend/customer/    Customer chatbot portal (:5500)
+frontend/owner/       Owner support workspace (:5501)
+frontend/shared/      Shared API base URL + base CSS
 infra/init.sql        Fresh-database schema + seed data
+infra/support_schema.sql  Support case schema (apply separately if needed)
 compose.yaml          Postgres + backend services
 Dockerfile            Backend image
 ```
@@ -132,3 +147,12 @@ Dockerfile            Backend image
 - The backend reaches host Ollama via `host.docker.internal`.
 - ChromaDB data is stored under `data/chroma/` and recreated from policy text when empty.
 - Sample JSON files under `data/` mirror the seed rows for reference; runtime reads come from PostgreSQL.
+- CORS allows only `http://127.0.0.1:5500` and `http://127.0.0.1:5501` (no wildcard).
+
+## Security limitations (localhost development)
+
+- Separate frontend pages and CORS are **not** authentication or authorization.
+- Owner API routes are reachable by any localhost client that can call port 8000.
+- Customer identity / order ownership is not verified for public deployment.
+- Gmail OAuth tokens stay on the backend (`token.json`); do not place credentials in static frontend files.
+- Before any public deployment, add owner authentication and customer identity verification.
