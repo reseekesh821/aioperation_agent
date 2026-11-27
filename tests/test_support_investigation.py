@@ -202,6 +202,10 @@ def test_investigate_endpoint_success(monkeypatch):
             "summary": "Order 1003 can be reviewed for a refund.",
         },
     )
+    monkeypatch.setattr(
+        "backend.app.main.record_investigation_success",
+        lambda findings: None,
+    )
 
     response = client.post("/support/emails/msg-1/investigate")
     assert response.status_code == 200
@@ -223,6 +227,10 @@ def test_investigate_endpoint_message_outside_label(monkeypatch):
         "backend.app.main.investigate_support_email",
         raise_not_allowed,
     )
+    monkeypatch.setattr(
+        "backend.app.main.record_investigation_success",
+        lambda findings: None,
+    )
 
     response = client.post("/support/emails/msg-outside/investigate")
     assert response.status_code == 403
@@ -238,6 +246,10 @@ def test_investigate_endpoint_gmail_error(monkeypatch):
     monkeypatch.setattr(
         "backend.app.main.investigate_support_email",
         raise_gmail,
+    )
+    monkeypatch.setattr(
+        "backend.app.main.record_investigation_success",
+        lambda findings: None,
     )
 
     response = client.post("/support/emails/msg-1/investigate")

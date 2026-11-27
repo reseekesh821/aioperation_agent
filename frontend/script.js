@@ -5,6 +5,12 @@ const button = form.querySelector("button");
 const loadEmailsButton = document.getElementById("load-emails-button");
 const supportStatus = document.getElementById("support-inbox-status");
 const supportEmailList = document.getElementById("support-email-list");
+const syncCasesButton = document.getElementById("sync-cases-button");
+const refreshCasesButton = document.getElementById("refresh-cases-button");
+const supportCasesStatus = document.getElementById("support-cases-status");
+const supportCasesSummary = document.getElementById("support-cases-summary");
+const supportCasesList = document.getElementById("support-cases-list");
+const supportCaseDetail = document.getElementById("support-case-detail");
 
 function addMessage(sender, message) {
     const p = document.createElement("p");
@@ -406,5 +412,272 @@ loadEmailsButton.addEventListener("click", async () => {
         );
     } finally {
         loadEmailsButton.disabled = false;
+    }
+});
+
+function setCasesStatus(message, isError = false) {
+    supportCasesStatus.textContent = message;
+    supportCasesStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+function orderLabelForCase(caseItem) {
+    if (caseItem.order_id != null) {
+        return String(caseItem.order_id);
+    }
+    if (caseItem.olist_order_id) {
+        return caseItem.olist_order_id;
+    }
+    return "—";
+}
+
+function renderCasesSummary(counts, total) {
+    supportCasesSummary.replaceChildren();
+    const summary = document.createElement("p");
+    summary.className = "support-cases-counts";
+    const parts = [`Total: ${total}`];
+    const order = [
+        "new",
+        "investigated",
+        "draft_ready",
+        "draft_saved",
+        "needs_attention",
+        "closed",
+    ];
+    for (const status of order) {
+        parts.push(`${status}: ${(counts && counts[status]) || 0}`);
+    }
+    summary.textContent = parts.join(" · ");
+    supportCasesSummary.appendChild(summary);
+}
+
+function renderCasesList(cases) {
+    supportCasesList.replaceChildren();
+    if (!cases.length) {
+        const empty = document.createElement("p");
+        empty.className = "support-cases-empty";
+        empty.textContent = "No support cases yet. Sync from Gmail to create cases.";
+        supportCasesList.appendChild(empty);
+        return;
+    }
+
+    for (const caseItem of cases) {
+        const article = document.createElement("article");
+        article.className = "support-case";
+
+        const subject = document.createElement("p");
+        subject.className = "support-case-subject";
+        subject.textContent = caseItem.subject || "(No subject)";
+
+        const meta = document.createElement("p");
+        meta.className = "support-case-meta";
+        meta.textContent = [
+            `Status: ${caseItem.status || "unknown"}`,
+            `Order: ${orderLabelForCase(caseItem)}`,
+            `Updated: ${caseItem.updated_at || "—"}`,
+        ].join(" · ");
+
+        const actions = document.createElement("div");
+        actions.className = "support-case-actions";
+
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "open-case-button";
+        openButton.textContent = "Open";
+        openButton.addEventListener("click", () => {
+            openSupportCase(caseItem.case_id, openButton);
+        });
+
+        actions.appendChild(openButton);
+        article.append(subject, meta, actions);
+        supportCasesList.appendChild(article);
+    }
+}
+
+function renderCaseDetail(detail) {
+    supportCaseDetail.hidden = false;
+    supportCaseDetail.replaceChildren();
+
+    const caseItem = detail.case || {};
+    const heading = document.createElement("p");
+    heading.className = "support-finding-heading";
+    heading.textContent = `Case #${caseItem.case_id}`;
+
+    const subject = document.createElement("p");
+    subject.className = "support-case-subject";
+    subject.textContent = caseItem.subject || "(No subject)";
+
+    const meta = document.createElement("pre");
+    meta.className = "support-finding-text";
+    meta.textContent = [
+        `Status: ${caseItem.status || "unknown"}`,
+        `Intent: ${caseItem.intent || "—"}`,
+        `Order: ${orderLabelForCase(caseItem)}`,
+        `Gmail message: ${caseItem.gmail_message_id || "—"}`,
+        `Gmail draft: ${caseItem.gmail_draft_id || "—"}`,
+        `Updated: ${caseItem.updated_at || "—"}`,
+    ].join("\n");
+
+    const actions = document.createElement("div");
+    actions.className = "support-case-actions";
+
+    const needsAttentionButton = document.createElement("button");
+    needsAttentionButton.type = "button";
+    needsAttentionButton.textContent = "Needs Attention";
+    needsAttentionButton.addEventListener("click", () => {
+        updateCaseStatus(caseItem.case_id, "needs_attention", needsAttentionButton);
+    });
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.textContent = "Close Case";
+    closeButton.addEventListener("click", () => {
+        updateCaseStatus(caseItem.case_id, "closed", closeButton);
+    });
+
+    actions.append(needsAttentionButton, closeButton);
+
+    const historyHeading = document.createElement("p");
+    historyHeading.className = "support-finding-label";
+    historyHeading.textContent = "Activity history";
+
+    const history = document.createElement("pre");
+    history.className = "support-finding-text";
+    const events = Array.isArray(detail.events) ? detail.events : [];
+    history.textContent = events.length
+        ? events.map((event) => {
+            const when = event.created_at || "";
+            const type = event.event_type || "";
+            const detailText = event.detail || "";
+            return `- [${when}] ${type}: ${detailText}`;
+        }).join("\n")
+        : "No activity recorded yet.";
+
+    supportCaseDetail.append(
+        heading,
+        subject,
+        meta,
+        actions,
+        historyHeading,
+        history
+    );
+}
+
+async function loadSupportCases({quiet = false} = {}) {
+    if (!quiet) {
+        setCasesStatus("Loading cases...");
+    }
+    const response = await fetch("http://127.0.0.1:8000/support/cases");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.detail || `HTTP ${response.status}`);
+    }
+    const cases = Array.isArray(data.cases) ? data.cases : [];
+    const counts = data.counts || {};
+    const total = data.total != null ? data.total : cases.length;
+    renderCasesSummary(counts, total);
+    renderCasesList(cases);
+    setCasesStatus(`Loaded ${total} case(s).`);
+}
+
+async function openSupportCase(caseId, button) {
+    button.disabled = true;
+    setCasesStatus(`Opening case #${caseId}...`);
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}`
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+        renderCaseDetail(data);
+        setCasesStatus(`Viewing case #${caseId}.`);
+    } catch (error) {
+        setCasesStatus(
+            error instanceof Error ? error.message : "Unable to open case.",
+            true
+        );
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function updateCaseStatus(caseId, status, button) {
+    button.disabled = true;
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}/status`,
+            {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({status}),
+            }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+        await loadSupportCases({quiet: true});
+        const detailResponse = await fetch(
+            `http://127.0.0.1:8000/support/cases/${encodeURIComponent(caseId)}`
+        );
+        const detail = await detailResponse.json().catch(() => ({}));
+        if (detailResponse.ok) {
+            renderCaseDetail(detail);
+        }
+        setCasesStatus(`Case #${caseId} marked ${status}.`);
+    } catch (error) {
+        setCasesStatus(
+            error instanceof Error ? error.message : "Unable to update case.",
+            true
+        );
+    } finally {
+        button.disabled = false;
+    }
+}
+
+syncCasesButton.addEventListener("click", async () => {
+    syncCasesButton.disabled = true;
+    refreshCasesButton.disabled = true;
+    setCasesStatus("Syncing labeled Gmail messages into cases...");
+    try {
+        const response = await fetch("http://127.0.0.1:8000/support/cases/sync", {
+            method: "POST",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.detail || `HTTP ${response.status}`);
+        }
+        renderCasesSummary(data.counts || {}, data.total || 0);
+        renderCasesList(Array.isArray(data.cases) ? data.cases : []);
+        setCasesStatus(
+            `Synced ${data.synced_count || 0} labeled message(s) into cases.`
+        );
+    } catch (error) {
+        setCasesStatus(
+            error instanceof Error ? error.message : "Case sync failed.",
+            true
+        );
+    } finally {
+        syncCasesButton.disabled = false;
+        refreshCasesButton.disabled = false;
+    }
+});
+
+refreshCasesButton.addEventListener("click", async () => {
+    refreshCasesButton.disabled = true;
+    syncCasesButton.disabled = true;
+    try {
+        await loadSupportCases();
+    } catch (error) {
+        supportCasesList.replaceChildren();
+        supportCasesSummary.replaceChildren();
+        setCasesStatus(
+            error instanceof Error ? error.message : "Unable to load cases.",
+            true
+        );
+    } finally {
+        refreshCasesButton.disabled = false;
+        syncCasesButton.disabled = false;
     }
 });

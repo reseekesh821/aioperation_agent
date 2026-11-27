@@ -202,6 +202,8 @@ def save_support_reply_draft(
         "thread_id": saved_thread,
         "recipient": recipient,
         "subject": subject,
+        # Original inbox subject for case metadata (not the Re: reply subject).
+        "source_subject": email.get("subject") or "",
         "status": DRAFT_STATUS_SAVED_NOT_SENT,
         "sent": False,
     }

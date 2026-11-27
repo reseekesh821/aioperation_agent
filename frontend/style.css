@@ -76,7 +76,8 @@ button:disabled {
     cursor: not-allowed;
 }
 
-#support-inbox {
+#support-inbox,
+#support-cases {
     margin-top: 36px;
     padding-top: 24px;
     border-top: 1px solid #e5e7eb;
@@ -254,4 +255,76 @@ button:disabled {
     color: #92400e;
     font-size: 0.85rem;
     font-weight: 700;
+}
+
+#support-cases h2 {
+    margin: 0 0 8px;
+    font-size: 1.25rem;
+}
+
+.support-cases-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+#support-cases-status {
+    min-height: 1.25em;
+    margin-bottom: 12px;
+    color: #4b5563;
+}
+
+#support-cases-status.is-error {
+    color: #b91c1c;
+}
+
+.support-cases-counts,
+.support-cases-empty {
+    margin: 0 0 12px;
+    color: #4b5563;
+}
+
+#support-cases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.support-case {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+.support-case-subject {
+    margin: 0 0 6px;
+    font-weight: 700;
+}
+
+.support-case-meta {
+    margin: 0;
+    color: #4b5563;
+    font-size: 0.95rem;
+}
+
+.support-case-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+#support-case-detail {
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.open-case-button {
+    padding: 8px 14px;
+    font-size: 0.95rem;
 }

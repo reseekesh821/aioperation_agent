@@ -35,6 +35,22 @@
         <div id="support-email-list"></div>
     </section>
 
+    <section id="support-cases" aria-labelledby="support-cases-title">
+        <h2 id="support-cases-title">Support Cases</h2>
+        <p class="support-inbox-help">
+            Persistent case dashboard for labeled support requests. Sync creates
+            or updates cases without storing email bodies.
+        </p>
+        <div class="support-cases-actions">
+            <button id="sync-cases-button" type="button">Sync from Gmail</button>
+            <button id="refresh-cases-button" type="button">Refresh Cases</button>
+        </div>
+        <div id="support-cases-status" role="status" aria-live="polite"></div>
+        <div id="support-cases-summary"></div>
+        <div id="support-cases-list"></div>
+        <div id="support-case-detail" hidden></div>
+    </section>
+
     <script src="script.js"></script>
 </body>
 </html>
